@@ -1,0 +1,178 @@
+setwd("C:/visual analytics/data") 
+STEM.Diversity <- read.csv("Diversity in STEM 2011-2020.csv")
+USA.HigherInstitutions <- read.csv("USA HIGHER INSTITUTIONS (IPEDS).csv")
+STEM.DEGREES.2022 <- read.csv("Stem degrees 2022.csv")
+
+
+install.packages("forecast")
+library(tidyr)
+library(forecast)
+library(ggplot2)
+library(dplyr)
+library(plotly)
+
+STEM.Diversity.11.20 <- STEM.Diversity %>%
+  pivot_longer(
+    cols = X2011:X2020,  
+    names_to = "Year",     
+    values_to = "Count"   
+  ) %>%
+  mutate(Year = gsub("X", "", Year)) 
+
+
+Stem.fem <- STEM.Diversity.11.20 %>%
+  filter(Field.category == "Science and engineering", Gender == "Female") %>%
+  mutate(Count = as.numeric(Count)) 
+
+broad_field_trend <- Stem.fem %>%
+  group_by(Year, Broad.field) %>%
+  summarise(Total_Count = sum(Count, na.rm = TRUE))
+
+
+#GRAPH 1
+#Top 50 Universities producing Bachelors degrees
+Topunis <- USA.HigherInstitutions %>%
+  group_by(instnm) %>%
+  summarise(Total.Men.Bach = sum(Grand.total.men..Received.Bachelor.s.degree..2021.2022, na.rm = TRUE),
+            Total.Women.Bach = sum(Grand.total.women..Received.Bachelor.s.degree..2021.2022, na.rm = TRUE),
+            Total.STEM.Degrees = Total.Men.Bach + Total.Women.Bach) %>%
+  arrange(desc(Total.STEM.Degrees)) %>%
+  slice_head(n = 50)
+
+
+Topunis_long <- Topunis %>%
+  pivot_longer(cols = c(Total.Men.Bach, Total.Women.Bach), 
+               names_to = "Gender", 
+               values_to = "Total.Degrees") %>%
+  mutate(Gender = recode(Gender, 
+                         Total.Men.Bach = "Men", 
+                         Total.Women.Bach = "Women"))
+Top50unis <- ggplot(Topunis_long, aes(x = instnm, y = Total.Degrees, fill = Gender)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.7)) + 
+  labs(title = "Top 50 Universities Producing Bachelor's Degrees (2021-2022)",
+       x = "University", y = "Total STEM Degrees") +
+  scale_fill_manual(values = c("Men" = "darkblue", "Women" = "darkgreen"))+
+  theme_classic()+
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, face= "bold"))
+
+
+
+#GRAPH 2 
+#Bachelors Degrees in STEM by Race/Ethnicity 2011-2020
+STEM.Diversity.11.20 <- STEM.Diversity.11.20 %>%
+  mutate(Count = as.numeric(Count))
+
+Stem.race.sum <- Cit.sum.filter %>%
+  filter(!is.na(Race.and.ethnicity)) %>%  
+  group_by(Race.and.ethnicity, Broad.field) %>%
+  summarise(total_count = sum(Count, na.rm = TRUE)) %>%
+  arrange(Race.and.ethnicity, desc(total_count))
+
+Stem.race <- ggplot(Stem.race.sum, aes(x = Broad.field, y = total_count, fill = Race.and.ethnicity)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Bachelors Degrees in STEM by Race/Ethnicity 2011-2020",
+       x = "Broad Field",
+       y = "Total Count",
+       fill = "Race/Ethnicity") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+options(repr.plot.width = 35, repr.plot.height = 8)
+
+
+#GRAPH 3 
+#Total Count by Year, Field Category, and Race/Ethnicity
+Field.race.sum <- STEM.Diversity.11.20 %>%
+  mutate(Count = as.numeric(Count)) %>%
+  group_by(Year, Field.category, Race.and.ethnicity) %>%
+  summarise(Total_Count = sum(Count, na.rm = TRUE))
+Field.race.sum <- Field.race.sum[!is.na(Field.race.sum$Race.and.ethnicity), ]
+Field.race.sum$Year <- as.factor(Field.race.sum$Year)
+
+Field.race <- ggplot(Field.race.sum, aes(x = Year, y = Total_Count, fill = Race.and.ethnicity)) +
+  geom_bar(stat = "identity", position = position_dodge(width = 0.8)) +  
+  labs(title = "Total Count by Year, Field Category, and Race/Ethnicity",
+       x = "Year",
+       y = "Total Count",
+       fill = "Race and Ethnicity") +
+  scale_fill_manual(values = c("blue", "#ff7f0e", "#2ca02c", "pink", "darkred", "black", "red", "#bcbd22")) +  
+  theme_minimal() +
+  facet_wrap(~Field.category, ncol = 1, scales = "free_x") +  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),    
+        plot.title = element_text(hjust = 0.2, size = 10),    
+        legend.position = "bottom",                           
+        legend.key.size = unit(0.8, 'cm'),                    
+        legend.text = element_text(size = 8),                
+        plot.title.position = "plot",                         
+        legend.title = element_text(size = 10))
+
+
+#GRAPH 4
+#STEM Degrees Awarded by Ethnicity and \n Degree Level (2022)
+STEM.2022 <- STEM.DEGREES.2022 %>%
+  pivot_longer(cols = -Degree, names_to = "Ethnicity", values_to = "Count") %>%
+  filter(Ethnicity != "X" & Ethnicity != "")
+
+Stem22 <- ggplot(STEM.2022, aes(x = Degree, y = Count, fill = Ethnicity)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "STEM Degrees Awarded by Ethnicity and \n Degree Level (2022)",
+       x = "Degree Level", y = "Number of STEM Degrees",
+       fill = "Ethnicity") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+
+#GRAPH 5
+Cit.sum.filter <- STEM.Diversity.11.20 %>%
+  filter(Field.category == "Science and engineering") %>%
+  mutate(Count = as.numeric(Count)) 
+
+Cit.sum <- Cit.sum.filter %>%
+  group_by(Detailed.field, Citizenship) %>%
+  summarize(total_count = sum(Count, na.rm = TRUE))
+
+# Plot the comparison of U.S. vs Non-U.S. citizens by detailed field
+Cit.noncit <- ggplot(summarized_data, aes(x = Detailed.field, y = total_count, fill = Citizenship)) +
+  geom_bar(stat = "identity", position = "dodge") +  # Grouped bar chart
+  labs(title = "U.S. vs Non-U.S. Representation by Detailed Field (2011-2020)",
+       x = "Detailed Field", y = "Total Count", fill = "Citizenship") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1),
+        legend.position = "bottom")
+
+
+
+#GRAPH 6
+#Gender Disparity Index (GDI) in Engineering (2011-2020)
+Stem.eng.wide <- STEM.Diversity.11.20 %>%
+  mutate(Count = as.numeric(Count)) %>%  
+  filter(Broad.field == "Engineering", !is.na(Count), !is.na(Year)) %>% 
+  group_by(Year, Gender) %>%
+  summarise(Total = sum(Count), .groups = 'drop') %>%
+  spread(key = Gender, value = Total) %>%
+  filter(!is.na(Female) & !is.na(Male)) %>%
+  mutate(GDI = Male / Female)  
+
+
+GDI.plot <- ggplot(Stem.eng.wide, aes(x = Year, y = GDI, group = 1)) +  
+  geom_line(color = "black", size = 0.8) +  
+  geom_point(color = "red", size = 2) +  
+  labs(title = "Gender Disparity Index (GDI) in Engineering \n (2011-2020)",
+       x = "Year",
+       y = "Gender Disparity Index (Male to Female Ratio)") +
+  theme_minimal()
+
+
+#GRAPH 7
+#Female Representation in Sciences and Engineering \n (2011-2020)
+Female.SE <- ggplot(broad_field_trend, aes(x = factor(Year), y = Total_Count, color = Broad.field, group = Broad.field)) +
+  geom_line(linewidth = 1) +  
+  labs(title = "Female Representation in Sciences and Engineering \n (2011-2020)",
+       x = "Year",
+       y = "Total Count",
+       color = "Broad Field") +
+  theme_minimal()+
+  scale_color_manual(values = c("Engineering" = "darkblue", "Geosciences" = "hotpink", "Life sciences" = "forestgreen",
+                                "Math and computer sciences" = "lightblue", "Physical sciences" = "yellow",
+                                "Psychology" = "red", "Social sciences" = "darkorange")) +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  
